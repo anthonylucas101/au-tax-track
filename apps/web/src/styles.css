@@ -1,0 +1,392 @@
+﻿:root {
+  --bg: #ffffff;
+  --fg: #1a1a1a;
+  --muted: #6a6a6a;
+  --border: #d0d0d0;
+  --accent: #0b5fff;
+  --accent-soft: #e8f0ff;
+  --good: #1f7a3a;
+  --bad: #b3261e;
+  --warn: #b67c00;
+  --row-alt: #fafafa;
+}
+
+* { box-sizing: border-box; }
+
+html, body, #root { height: 100%; margin: 0; }
+
+body {
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+  color: var(--fg);
+  background: var(--bg);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+.app-shell {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.app-nav {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+  padding: 0.75rem 1.25rem;
+  border-bottom: 1px solid var(--border);
+  background: #fafafa;
+}
+
+.app-nav h1 {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 600;
+}
+
+.app-nav nav {
+  display: flex;
+  gap: 0.75rem;
+  flex: 1;
+}
+
+.app-nav nav a {
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  color: var(--fg);
+}
+
+.app-nav nav a.active {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.app-nav nav .disabled {
+  color: var(--muted);
+  cursor: not-allowed;
+}
+
+.app-main {
+  padding: 1.25rem;
+  max-width: 1100px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+.fy-select {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.fy-select select {
+  padding: 0.25rem 0.4rem;
+  font-size: 0.9rem;
+}
+
+h2 { margin-top: 0; }
+
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.card {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.9rem 1rem;
+  background: #fff;
+}
+
+.card .label {
+  font-size: 0.8rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.card .value {
+  font-size: 1.4rem;
+  font-weight: 600;
+  margin-top: 0.25rem;
+}
+
+.card.good .value { color: var(--good); }
+.card.bad .value { color: var(--bad); }
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.5rem 0 1rem;
+  font-size: 0.92rem;
+}
+
+table th, table td {
+  border-bottom: 1px solid var(--border);
+  padding: 0.45rem 0.55rem;
+  text-align: left;
+  vertical-align: top;
+}
+
+table th {
+  background: #f4f4f4;
+  font-weight: 600;
+}
+
+table tbody tr:nth-child(even) {
+  background: var(--row-alt);
+}
+
+table .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+table tfoot td {
+  border-top: 2px solid var(--border);
+  font-weight: 600;
+  background: #f9f9f9;
+}
+
+form.stacked {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0.6rem;
+  align-items: end;
+  margin: 0.5rem 0 1rem;
+  padding: 0.9rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #fafafa;
+}
+
+form.stacked label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+form.stacked input,
+form.stacked select,
+form.stacked textarea {
+  padding: 0.35rem 0.45rem;
+  font-size: 0.95rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: #fff;
+}
+
+form.stacked .actions {
+  display: flex;
+  gap: 0.5rem;
+  align-items: end;
+}
+
+button {
+  padding: 0.4rem 0.8rem;
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: #fff;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+button.secondary {
+  background: #fff;
+  color: var(--accent);
+}
+
+button.danger {
+  background: #fff;
+  color: var(--bad);
+  border-color: var(--bad);
+}
+
+button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.section {
+  margin-bottom: 2rem;
+}
+
+.section h3 {
+  margin: 0 0 0.4rem;
+  font-size: 1rem;
+}
+
+.error {
+  color: var(--bad);
+  background: #fff0ef;
+  border: 1px solid #f3c4c1;
+  padding: 0.5rem 0.75rem;
+  border-radius: 4px;
+  margin: 0.5rem 0;
+}
+
+.muted { color: var(--muted); }
+.formula { color: var(--muted); font-size: 0.85rem; }
+
+.coming-soon {
+  font-size: 0.75rem;
+  color: var(--muted);
+  margin-left: 0.25rem;
+}
+
+.disclaimer {
+  margin-top: 1.5rem;
+  padding: 0.6rem 0.8rem;
+  border: 1px dashed var(--border);
+  border-radius: 4px;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+/* â”€â”€ Investments nav â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+.nav-group {
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 0.25rem 0.25rem 0;
+  cursor: default;
+  user-select: none;
+}
+
+.nav-sub-link {
+  padding-left: 1rem !important;
+  font-size: 0.9rem;
+}
+
+/* â”€â”€ Trade side colours â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+.side-buy  { color: var(--good); font-weight: 600; }
+.side-sell { color: var(--bad);  font-weight: 600; }
+
+/* â”€â”€ File drop zone â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+.drop-zone {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 80px;
+  border: 2px dashed var(--border);
+  border-radius: 6px;
+  padding: 1rem 1.5rem;
+  color: var(--muted);
+  cursor: pointer;
+  text-align: center;
+  background: #fafafa;
+  transition: border-color 0.15s, background 0.15s;
+  max-width: 600px;
+}
+
+.drop-zone:hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+/* â”€â”€ Import preview badges â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+.badge-new {
+  display: inline-block;
+  background: #d4edda;
+  color: #155724;
+  border-radius: 3px;
+  padding: 0 0.35rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.badge-dup {
+  display: inline-block;
+  background: #fff3cd;
+  color: #856404;
+  border-radius: 3px;
+  padding: 0 0.35rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.badge-err {
+  display: inline-block;
+  background: #f8d7da;
+  color: #721c24;
+  border-radius: 3px;
+  padding: 0 0.35rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+/* â”€â”€ CGT event row colours â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+.cgt-gain { color: var(--good); }
+.cgt-loss { color: var(--bad);  }
+
+/* â”€â”€ CGT summary cards â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+.summary-cards {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-bottom: 1.5rem;
+}
+
+.summary-card {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.75rem 1rem;
+  background: #fff;
+  min-width: 150px;
+  flex: 1;
+}
+
+.summary-card .label {
+  font-size: 0.78rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.summary-card .value {
+  font-size: 1.2rem;
+  font-weight: 600;
+  margin-top: 0.2rem;
+}
+
+.summary-card.good .value { color: var(--good); }
+.summary-card.bad  .value { color: var(--bad);  }
+
+/* ── Export page ─────────────────────────────────────────────────────── */
+.export-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1.5rem;
+  margin-top: 0.5rem;
+}
+
+.export-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.export-card h3 {
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.export-card .muted {
+  flex: 1;
+}
+
+.export-card .btn-primary {
+  align-self: flex-start;
+}
