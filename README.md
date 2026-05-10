@@ -22,7 +22,7 @@ Local-first Australian personal tax / accounting tracker. Runs entirely on your 
 
 ```bash
 # 1. Clone the repo
-git clone https://github.com/anthonylucas101/au-tax-tracker.git
+git clone https://github.com/anthonylucas101/au-tax-track.git
 cd au-tax-tracker
 
 # 2. Install dependencies
