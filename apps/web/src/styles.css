@@ -364,6 +364,33 @@ button:disabled {
 .summary-card.good .value { color: var(--good); }
 .summary-card.bad  .value { color: var(--bad);  }
 
+/* ── Dashboard charts ────────────────────────────────────────────────── */
+.dash-charts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
+  gap: 1.25rem;
+  margin-bottom: 1.5rem;
+}
+
+.dash-chart-card {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1rem 1.25rem;
+  background: #fff;
+}
+
+.dash-chart-card h4 {
+  margin: 0 0 0.1rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.dash-chart-sub {
+  margin: 0 0 0.5rem;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
 /* ── Export page ─────────────────────────────────────────────────────── */
 .export-cards {
   display: grid;

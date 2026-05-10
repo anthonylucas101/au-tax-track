@@ -36,6 +36,8 @@ export interface DividendTotalsAud {
 export interface RentalPropertySummary {
   id: number;
   address: string;
+  income_cents: number;
+  expense_cents: number;
   net_cents: number;
   ownership_adjusted_net_cents: number;
 }
@@ -198,7 +200,14 @@ function computeRentalBlock(fyId: number): RentalBlock {
     }
     const net_cents = totals.income_cents - totals.expense_cents - depreciation_total;
     const ownership_adjusted_net_cents = Math.round(net_cents * (prop.ownership_percent / 100));
-    summaries.push({ id: prop.id, address: prop.address, net_cents, ownership_adjusted_net_cents });
+    summaries.push({
+      id: prop.id,
+      address: prop.address,
+      income_cents: totals.income_cents,
+      expense_cents: totals.expense_cents + depreciation_total,
+      net_cents,
+      ownership_adjusted_net_cents,
+    });
   }
 
   const total_net_cents = summaries.reduce((s, p) => s + p.ownership_adjusted_net_cents, 0);

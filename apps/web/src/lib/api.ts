@@ -74,6 +74,8 @@ export interface CgtSummary {
 export interface RentalPropertySummary {
   id: number;
   address: string;
+  income_cents: number;
+  expense_cents: number;
   net_cents: number;
   ownership_adjusted_net_cents: number;
 }
