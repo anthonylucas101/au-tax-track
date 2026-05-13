@@ -14,6 +14,7 @@ import { cgtRoute } from './routes/cgt.js';
 import { importStakeRoute } from './routes/importStake.js';
 import { propertiesRoute } from './routes/properties.js';
 import { exportRoute } from './routes/export.js';
+import { deductionsRoute } from './routes/deductions.js';
 
 seed(db);
 
@@ -33,6 +34,7 @@ app.route('/api/cgt', cgtRoute);
 app.route('/api/import/stake', importStakeRoute);
 app.route('/api/properties', propertiesRoute);
 app.route('/api/export', exportRoute);
+app.route('/api/deductions', deductionsRoute);
 
 app.onError((err, c) => {
   console.error('[server] error:', err);

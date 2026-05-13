@@ -451,7 +451,189 @@ function SaleForm({ property, onUpdated }: { property: Property; onUpdated: (p: 
   );
 }
 
+// ── Reform helpers ────────────────────────────────────────────────────────────
+
+const ANNOUNCEMENT = '2026-05-12';
+const COMMENCEMENT = '2027-07-01';
+
+type NgStatus = 'grandfathered' | 'transitional_window' | 'restricted' | 'new_build';
+
+function computeNgStatus(p: Property): NgStatus {
+  if (p.is_new_build) return 'new_build';
+  const effectiveDate = p.contract_date ?? p.acquired_date;
+  if (!effectiveDate || effectiveDate <= ANNOUNCEMENT) return 'grandfathered';
+  if (effectiveDate < COMMENCEMENT) return 'transitional_window';
+  return 'restricted';
+}
+
+const NG_STATUS_LABEL: Record<NgStatus, string> = {
+  grandfathered:       'Grandfathered — full negative gearing forever',
+  transitional_window: 'Transitional — NG until FY 2026-27 only',
+  restricted:          'Restricted — losses quarantined from 1 Jul 2027',
+  new_build:           'New build — full negative gearing + CGT method choice',
+};
+const NG_STATUS_COLOR: Record<NgStatus, string> = {
+  grandfathered:       'var(--good)',
+  transitional_window: 'var(--warn)',
+  restricted:          'var(--bad)',
+  new_build:           'var(--accent)',
+};
+
 // ── Main page ─────────────────────────────────────────────────────────────────
+
+function PropertyDetailsEditor({ property, onSaved }: { property: Property; onSaved: (p: Property) => void }) {
+  const [open, setOpen] = useState(false);
+  const [address, setAddress] = useState(property.address);
+  const [acquiredDate, setAcquiredDate] = useState(property.acquired_date ?? '');
+  const [acquisitionCost, setAcquisitionCost] = useState(
+    property.acquisition_cost_cents != null ? (property.acquisition_cost_cents / 100).toFixed(2) : '',
+  );
+  const [ownershipPct, setOwnershipPct] = useState(String(property.ownership_percent));
+  const [isNewBuild, setIsNewBuild] = useState(!!property.is_new_build);
+  const [contractDate, setContractDate] = useState(property.contract_date ?? '');
+  const [valueAtCommencement, setValueAtCommencement] = useState(
+    property.value_at_commencement_cents != null ? (property.value_at_commencement_cents / 100).toFixed(2) : '',
+  );
+  const [cgtMethod, setCgtMethod] = useState<'discount' | 'indexation'>(property.cgt_method_choice ?? 'discount');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setAddress(property.address);
+    setAcquiredDate(property.acquired_date ?? '');
+    setAcquisitionCost(property.acquisition_cost_cents != null ? (property.acquisition_cost_cents / 100).toFixed(2) : '');
+    setOwnershipPct(String(property.ownership_percent));
+    setIsNewBuild(!!property.is_new_build);
+    setContractDate(property.contract_date ?? '');
+    setValueAtCommencement(property.value_at_commencement_cents != null ? (property.value_at_commencement_cents / 100).toFixed(2) : '');
+    setCgtMethod(property.cgt_method_choice ?? 'discount');
+  }, [property]);
+
+  async function handleSave(e: React.FormEvent) {
+    e.preventDefault();
+    setSaving(true);
+    setError(null);
+    try {
+      const updated = await api.updateProperty(property.id, {
+        address: address.trim() || property.address,
+        acquired_date: acquiredDate || null,
+        acquisition_cost_cents: acquisitionCost ? Math.round(parseFloat(acquisitionCost) * 100) : null,
+        ownership_percent: parseFloat(ownershipPct) || 100,
+        is_new_build: isNewBuild ? 1 : 0,
+        contract_date: contractDate || null,
+        value_at_commencement_cents: valueAtCommencement ? Math.round(parseFloat(valueAtCommencement) * 100) : null,
+        cgt_method_choice: isNewBuild ? cgtMethod : null,
+      });
+      onSaved(updated);
+      setOpen(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const ngStatus = computeNgStatus({ ...property, is_new_build: isNewBuild ? 1 : 0, contract_date: contractDate || null, acquired_date: acquiredDate || null });
+
+  return (
+    <div style={{ marginBottom: '1rem' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '0.35rem' }}>
+        <button type="button" onClick={() => setOpen(o => !o)} style={{ fontSize: '0.82rem', color: 'var(--muted)' }}>
+          {open ? '▲ Hide details' : '▼ Edit property details'}
+        </button>
+        <span style={{ fontSize: '0.78rem', fontWeight: 600, color: NG_STATUS_COLOR[ngStatus], border: `1px solid ${NG_STATUS_COLOR[ngStatus]}`, borderRadius: '4px', padding: '1px 7px' }}>
+          {NG_STATUS_LABEL[ngStatus]}
+        </span>
+      </div>
+      {open && (
+        <form onSubmit={handleSave} className="inline-form" style={{ marginTop: '0.75rem' }}>
+          {error && <div className="error">{error}</div>}
+          <div className="form-row">
+            <label>Address</label>
+            <input value={address} onChange={e => setAddress(e.target.value)} style={{ width: '22rem' }} required />
+          </div>
+          <div className="form-row">
+            <label>Acquired date</label>
+            <input type="date" value={acquiredDate} onChange={e => setAcquiredDate(e.target.value)} />
+          </div>
+          <div className="form-row">
+            <label>Purchase price ($)</label>
+            <input
+              type="number" min="0" step="0.01"
+              value={acquisitionCost}
+              onChange={e => setAcquisitionCost(e.target.value)}
+              placeholder="incl. stamp duty & legals"
+              style={{ width: '11rem' }}
+            />
+          </div>
+          <div className="form-row">
+            <label>Ownership %</label>
+            <input type="number" min="0" max="100" step="0.01"
+              value={ownershipPct} onChange={e => setOwnershipPct(e.target.value)} style={{ width: '6rem' }} />
+          </div>
+
+          <hr style={{ margin: '0.75rem 0', borderColor: '#ddd' }} />
+          <p style={{ margin: '0 0 0.5rem', fontSize: '0.82rem', fontWeight: 600, color: 'var(--muted)' }}>
+            2026-27 Budget Reform fields
+          </p>
+
+          <div className="form-row">
+            <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', cursor: 'pointer' }}>
+              <input type="checkbox" checked={isNewBuild} onChange={e => setIsNewBuild(e.target.checked)} />
+              Eligible new build
+            </label>
+            <span className="muted" style={{ fontSize: '0.78rem' }}>Full NG retained; CGT method choice applies</span>
+          </div>
+
+          <div className="form-row">
+            <label>Binding contract date</label>
+            <input type="date" value={contractDate} onChange={e => setContractDate(e.target.value)} />
+            <span className="muted" style={{ fontSize: '0.78rem', marginLeft: '0.5rem' }}>
+              Used for grandfathering if contract signed before settlement
+            </span>
+          </div>
+
+          <div className="form-row">
+            <label>Property value at 1 Jul 2027 ($)</label>
+            <input
+              type="number" min="0" step="0.01"
+              value={valueAtCommencement}
+              onChange={e => setValueAtCommencement(e.target.value)}
+              placeholder="for CGT split calculation"
+              style={{ width: '13rem' }}
+            />
+          </div>
+
+          {isNewBuild && (
+            <div className="form-row" style={{ alignItems: 'flex-start' }}>
+              <label>CGT method (new build)</label>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', cursor: 'pointer', fontWeight: 400 }}>
+                  <input type="radio" name="cgtMethod" value="discount" checked={cgtMethod === 'discount'} onChange={() => setCgtMethod('discount')} />
+                  50% CGT discount (current law)
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', cursor: 'pointer', fontWeight: 400 }}>
+                  <input type="radio" name="cgtMethod" value="indexation" checked={cgtMethod === 'indexation'} onChange={() => setCgtMethod('indexation')} />
+                  CPI indexation + 30% minimum tax
+                </label>
+              </div>
+            </div>
+          )}
+
+          <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
+            <button type="submit" disabled={saving}>{saving ? 'Saving…' : 'Save'}</button>
+            <button type="button" onClick={() => setOpen(false)}>Cancel</button>
+          </div>
+        </form>
+      )}
+      {!open && property.acquisition_cost_cents != null && (
+        <p className="muted" style={{ margin: '0.25rem 0 0', fontSize: '0.82rem' }}>
+          Purchased {property.acquired_date ?? 'unknown date'} · {fmtAud(property.acquisition_cost_cents)} cost base
+        </p>
+      )}
+    </div>
+  );
+}
 
 export function PropertyDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -523,6 +705,8 @@ export function PropertyDetailPage() {
       <h2>{property.address}</h2>
       {property.ownership_percent !== 100 && <p className="muted">{property.ownership_percent}% owned</p>}
       {property.sold_date && <p style={{ color: 'var(--warn)' }}>Sold {property.sold_date}</p>}
+
+      <PropertyDetailsEditor property={property} onSaved={setProperty} />
 
       {/* ── FY net summary banner ── */}
       {summary && (

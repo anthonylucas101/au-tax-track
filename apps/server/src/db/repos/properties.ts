@@ -1,4 +1,4 @@
-﻿import { db } from '../index.js';
+import { db } from '../index.js';
 
 export interface Property {
   id: number;
@@ -10,6 +10,11 @@ export interface Property {
   sale_proceeds_cents: number | null;
   selling_costs_cents: number;
   notes: string | null;
+  // 2026-27 Budget Reform fields
+  is_new_build: number;                        // 0 | 1
+  contract_date: string | null;                // binding contract date (for grandfathering pre-settlement)
+  cgt_method_choice: 'discount' | 'indexation' | null; // new-build only: choose between 50% discount or indexation
+  value_at_commencement_cents: number | null;  // property value at 1 Jul 2027 (for transitional CGT split)
 }
 
 export interface PropertyInput {
@@ -29,10 +34,15 @@ export interface PropertyUpdate {
   sale_proceeds_cents?: number | null;
   selling_costs_cents?: number;
   notes?: string | null;
+  is_new_build?: number;
+  contract_date?: string | null;
+  cgt_method_choice?: 'discount' | 'indexation' | null;
+  value_at_commencement_cents?: number | null;
 }
 
 const COLS = `id, address, ownership_percent, acquired_date, acquisition_cost_cents,
-              sold_date, sale_proceeds_cents, selling_costs_cents, notes`;
+              sold_date, sale_proceeds_cents, selling_costs_cents, notes,
+              is_new_build, contract_date, cgt_method_choice, value_at_commencement_cents`;
 
 const listStmt = db.prepare<[], Property>(
   `SELECT ${COLS} FROM properties ORDER BY address ASC`,
@@ -49,13 +59,17 @@ const insertStmt = db.prepare(
 
 const deleteStmt = db.prepare(`DELETE FROM properties WHERE id = ?`);
 
+function hasOwn(obj: object, key: string): boolean {
+  return Object.prototype.hasOwnProperty.call(obj, key);
+}
+
 export const propertiesRepo = {
   findAll(): Property[] {
     return listStmt.all();
   },
 
   findById(id: number): Property | undefined {
-    return findByIdStmt.get(id);
+    return findByIdStmt.get(id) ?? undefined;
   },
 
   create(input: PropertyInput): Property {
@@ -75,38 +89,36 @@ export const propertiesRepo = {
     const current = findByIdStmt.get(id);
     if (!current) return undefined;
 
-    const address = input.address ?? current.address;
-    const ownershipPercent = input.ownership_percent ?? current.ownership_percent;
-    const acquiredDate = Object.prototype.hasOwnProperty.call(input, 'acquired_date')
-      ? input.acquired_date
-      : current.acquired_date;
-    const acquisitionCost = Object.prototype.hasOwnProperty.call(input, 'acquisition_cost_cents')
-      ? input.acquisition_cost_cents
-      : current.acquisition_cost_cents;
-    const soldDate = Object.prototype.hasOwnProperty.call(input, 'sold_date')
-      ? input.sold_date
-      : current.sold_date;
-    const saleProceeds = Object.prototype.hasOwnProperty.call(input, 'sale_proceeds_cents')
-      ? input.sale_proceeds_cents
-      : current.sale_proceeds_cents;
-    const sellingCosts = input.selling_costs_cents ?? current.selling_costs_cents;
-    const notes = Object.prototype.hasOwnProperty.call(input, 'notes')
-      ? input.notes
-      : current.notes;
+    const address        = input.address ?? current.address;
+    const ownershipPct   = input.ownership_percent ?? current.ownership_percent;
+    const acquiredDate   = hasOwn(input, 'acquired_date')   ? input.acquired_date   : current.acquired_date;
+    const acquisitionCost = hasOwn(input, 'acquisition_cost_cents') ? input.acquisition_cost_cents : current.acquisition_cost_cents;
+    const soldDate       = hasOwn(input, 'sold_date')       ? input.sold_date       : current.sold_date;
+    const saleProceeds   = hasOwn(input, 'sale_proceeds_cents') ? input.sale_proceeds_cents : current.sale_proceeds_cents;
+    const sellingCosts   = input.selling_costs_cents ?? current.selling_costs_cents;
+    const notes          = hasOwn(input, 'notes')           ? input.notes           : current.notes;
+    const isNewBuild     = input.is_new_build ?? current.is_new_build;
+    const contractDate   = hasOwn(input, 'contract_date')   ? input.contract_date   : current.contract_date;
+    const cgtMethod      = hasOwn(input, 'cgt_method_choice') ? input.cgt_method_choice : current.cgt_method_choice;
+    const valueAtComm    = hasOwn(input, 'value_at_commencement_cents') ? input.value_at_commencement_cents : current.value_at_commencement_cents;
 
     db.prepare(
       `UPDATE properties SET
          address = ?, ownership_percent = ?, acquired_date = ?, acquisition_cost_cents = ?,
-         sold_date = ?, sale_proceeds_cents = ?, selling_costs_cents = ?, notes = ?
+         sold_date = ?, sale_proceeds_cents = ?, selling_costs_cents = ?, notes = ?,
+         is_new_build = ?, contract_date = ?, cgt_method_choice = ?, value_at_commencement_cents = ?
        WHERE id = ?`,
-    ).run(address, ownershipPercent, acquiredDate ?? null, acquisitionCost ?? null,
-          soldDate ?? null, saleProceeds ?? null, sellingCosts, notes ?? null, id);
+    ).run(
+      address, ownershipPct, acquiredDate ?? null, acquisitionCost ?? null,
+      soldDate ?? null, saleProceeds ?? null, sellingCosts, notes ?? null,
+      isNewBuild, contractDate ?? null, cgtMethod ?? null, valueAtComm ?? null,
+      id,
+    );
 
     return findByIdStmt.get(id);
   },
 
   delete(id: number): boolean {
-    const info = deleteStmt.run(id);
-    return info.changes > 0;
+    return deleteStmt.run(id).changes > 0;
   },
 };

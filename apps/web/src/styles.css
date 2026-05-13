@@ -364,6 +364,167 @@ button:disabled {
 .summary-card.good .value { color: var(--good); }
 .summary-card.bad  .value { color: var(--bad);  }
 
+/* ── Deductions page ─────────────────────────────────────────────────── */
+.hecs-toggle {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  cursor: pointer;
+  font-size: 0.95rem;
+}
+
+.hecs-toggle input[type="checkbox"] {
+  margin-top: 0.15rem;
+  width: 1rem;
+  height: 1rem;
+  flex-shrink: 0;
+}
+
+.deductions-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.deduction-row {
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.deduction-row:last-child { border-bottom: none; }
+.deduction-row:nth-child(even) { background: var(--row-alt); }
+
+.deduction-meta {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+}
+
+.deduction-ato {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-radius: 3px;
+  padding: 0.1rem 0.35rem;
+  flex-shrink: 0;
+  margin-top: 0.1rem;
+}
+
+.deduction-label {
+  font-weight: 500;
+  font-size: 0.9rem;
+}
+
+.deduction-hint {
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.deduction-input-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-left: 2.5rem;
+}
+
+.deduction-dollar {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.deduction-saved {
+  font-size: 0.8rem;
+  color: var(--good);
+}
+
+.km-helper {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-left: 2.5rem;
+  flex-wrap: wrap;
+}
+
+.km-helper-label {
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.deduction-total {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 0.75rem;
+  padding: 0.6rem 1rem;
+  background: var(--accent-soft);
+  border-radius: 6px;
+  font-size: 0.95rem;
+}
+
+/* ── Mode toggle (Single / Bulk) ─────────────────────────────────────── */
+h3 .mode-toggle {
+  display: inline-flex;
+  margin-left: 1rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+  vertical-align: middle;
+}
+
+h3 .mode-toggle button {
+  padding: 0.2rem 0.75rem;
+  font-size: 0.8rem;
+  border: none;
+  border-radius: 0;
+  background: #fff;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+h3 .mode-toggle button.active {
+  background: var(--accent);
+  color: #fff;
+}
+
+/* ── Bulk date checkboxes ────────────────────────────────────────────── */
+.bulk-dates {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 1rem;
+  max-height: 220px;
+  overflow-y: auto;
+  padding: 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #fafafa;
+}
+
+.bulk-date-item {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.85rem;
+  cursor: pointer;
+  user-select: none;
+}
+
+/* ── Success banner ──────────────────────────────────────────────────── */
+.success {
+  background: #ecfdf5;
+  color: var(--good);
+  border: 1px solid #6ee7b7;
+  border-radius: 5px;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.9rem;
+}
+
 /* ── Dashboard charts ────────────────────────────────────────────────── */
 .dash-charts {
   display: grid;

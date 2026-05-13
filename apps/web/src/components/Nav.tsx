@@ -20,6 +20,7 @@ export function Nav() {
         <span className="disabled">Crypto <span className="coming-soon">(coming soon)</span></span>
         <span className="nav-group">Property</span>
         <NavLink to="/property" className="nav-sub-link">Properties</NavLink>
+        <NavLink to="/deductions">Deductions</NavLink>
         <NavLink to="/export">Export</NavLink>
       </nav>
       <div className="fy-select">

@@ -123,7 +123,27 @@ export function TaxEstimatePage() {
                 <tr><td>Total capital gains</td><td className="num">{fmtAud(estimate.cgt.total_gain_cents)}</td></tr>
                 <tr><td>Total capital losses</td><td className="num">{fmtAud(estimate.cgt.total_loss_cents)}</td></tr>
                 <tr><td>Net capital gains</td><td className="num">{fmtAud(estimate.cgt.net_gain_cents)}</td></tr>
-                <tr><td>After 50% CGT discount (added to taxable income)</td><td className="num">{fmtAud(estimate.cgt.discounted_net_gain_cents)}</td></tr>
+                <tr><td>Pre-1 Jul 2027 gains after 50% discount (added to taxable income)</td><td className="num">{fmtAud(estimate.cgt.discounted_net_gain_cents)}</td></tr>
+                {estimate.cgt.new_regime_net_gain_cents > 0 && (
+                  <tr>
+                    <td>
+                      Post-1 Jul 2027 gains — CPI-indexed real gain (added to taxable income)
+                      <span className="muted" style={{ marginLeft: '0.4rem', fontSize: '0.82rem' }}>2026-27 Budget Reform</span>
+                    </td>
+                    <td className="num">{fmtAud(estimate.cgt.new_regime_net_gain_cents)}</td>
+                  </tr>
+                )}
+                {estimate.cgt_min_tax_cents > 0 && (
+                  <tr style={{ color: 'var(--bad)' }}>
+                    <td>
+                      30% CGT minimum tax top-up
+                      {estimate.received_income_support && (
+                        <span className="muted" style={{ marginLeft: '0.4rem', fontSize: '0.82rem' }}>(exempt — income support)</span>
+                      )}
+                    </td>
+                    <td className="num">{fmtAud(estimate.cgt_min_tax_cents)}</td>
+                  </tr>
+                )}
                 {estimate.cgt.loss_carryforward_cents > 0 && (
                   <tr>
                     <td>
@@ -160,6 +180,7 @@ export function TaxEstimatePage() {
                     <th>Property</th>
                     <th className="num">Net income</th>
                     <th className="num">Ownership-adjusted net</th>
+                    {estimate.rental.reform_applies && <th>NG status</th>}
                   </tr>
                 </thead>
                 <tbody>
@@ -174,6 +195,9 @@ export function TaxEstimatePage() {
                       <td className="num" style={{ color: p.ownership_adjusted_net_cents < 0 ? 'var(--bad)' : undefined }}>
                         {fmtAud(p.ownership_adjusted_net_cents)}
                       </td>
+                      {estimate.rental.reform_applies && (
+                        <td className="muted" style={{ fontSize: '0.82rem' }}>{p.ng_status.replace(/_/g, ' ')}</td>
+                      )}
                     </tr>
                   ))}
                   <tr style={{ fontWeight: 700, borderTop: '2px solid #ccc' }}>
@@ -189,7 +213,52 @@ export function TaxEstimatePage() {
                     >
                       {fmtAud(estimate.rental.total_net_cents)}
                     </td>
+                    {estimate.rental.reform_applies && <td />}
                   </tr>
+                  {estimate.rental.reform_applies && (
+                    <>
+                      {estimate.rental.general_offset_net_cents !== estimate.rental.total_net_cents && (
+                        <tr>
+                          <td className="muted" style={{ fontSize: '0.85rem' }}>
+                            Of which: grandfathered / transitional / new-build (offsets taxable income)
+                          </td>
+                          <td />
+                          <td className="num muted" style={{ fontSize: '0.85rem' }}>{fmtAud(estimate.rental.general_offset_net_cents)}</td>
+                          <td />
+                        </tr>
+                      )}
+                      {estimate.rental.quarantined_net_cents < 0 && (
+                        <tr style={{ color: 'var(--warn)' }}>
+                          <td style={{ fontSize: '0.85rem' }}>
+                            Quarantined loss (restricted properties — does not reduce taxable income)
+                          </td>
+                          <td />
+                          <td className="num" style={{ fontSize: '0.85rem' }}>{fmtAud(estimate.rental.quarantined_net_cents)}</td>
+                          <td />
+                        </tr>
+                      )}
+                      {estimate.rental.carry_forward_applied_cents > 0 && (
+                        <tr style={{ color: 'var(--good)' }}>
+                          <td style={{ fontSize: '0.85rem' }}>
+                            Prior-year carry-forward losses applied against restricted-property income
+                          </td>
+                          <td />
+                          <td className="num" style={{ fontSize: '0.85rem' }}>{fmtAud(estimate.rental.carry_forward_applied_cents)}</td>
+                          <td />
+                        </tr>
+                      )}
+                      {estimate.rental.new_carry_forward_cents > 0 && (
+                        <tr className="muted">
+                          <td style={{ fontSize: '0.85rem' }}>
+                            Accumulated carry-forward losses at end of FY (available next year)
+                          </td>
+                          <td />
+                          <td className="num" style={{ fontSize: '0.85rem' }}>{fmtAud(estimate.rental.new_carry_forward_cents)}</td>
+                          <td />
+                        </tr>
+                      )}
+                    </>
+                  )}
                 </tbody>
               </table>
             </section>

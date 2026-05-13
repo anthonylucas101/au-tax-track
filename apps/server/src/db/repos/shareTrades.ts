@@ -22,6 +22,7 @@ export interface ShareTradeWithSecurity extends ShareTrade {
   ticker: string;
   security_name: string | null;
   exchange: string | null;
+  value_at_commencement_cents: number | null; // AUD cents per unit at 1 Jul 2027; null if not set
 }
 
 export interface ShareTradeInput {
@@ -67,7 +68,8 @@ const SELECT_WITH_SEC = `
   SELECT t.id, t.security_id, t.fy_id, t.trade_date, t.settlement_date, t.side,
          t.units, t.price_cents, t.brokerage_cents, t.gst_cents, t.currency,
          t.aud_fx_rate, t.external_id, t.is_opening, t.notes,
-         s.ticker, s.name AS security_name, s.exchange
+         s.ticker, s.name AS security_name, s.exchange,
+         s.value_at_commencement_cents
     FROM share_trades t
     JOIN securities s ON s.id = t.security_id`;
 

@@ -4,9 +4,92 @@ import { financialYearsRepo, type FinancialYear } from '../db/repos/financialYea
 import { dividendsRepo, type DividendWithSecurity } from '../db/repos/dividends.js';
 import { propertiesRepo } from '../db/repos/properties.js';
 import { rentalTransactionsRepo } from '../db/repos/rentalTransactions.js';
+import { deductionsRepo } from '../db/repos/deductions.js';
 import { convertToAud } from '../lib/money.js';
 import { computeCgtForFy, type CgtResult } from './cgt.js';
 import { computeDepreciationForFy } from './depreciation.js';
+import {
+  CGT_MIN_TAX_RATE,
+  REFORM_COMMENCEMENT_DATE,
+  classifyNgStatus,
+  ngOffsetAllowedForFy,
+  type NgStatus,
+} from '../lib/budgetReform2027.js';
+import { residentialLossCfRepo } from '../db/repos/residentialLossCf.js';
+
+// ATO HECS/HELP compulsory repayment rates.
+// Repayment = rate × full repayment income (not just excess above threshold).
+// Source: ATO 2024-25 individual tax return instructions. Verify 2025-26 against ATO.
+const HECS_TIERS: { from_cents: number; rate: number }[] = [
+  { from_cents:   5_443_500, rate: 0.010 },
+  { from_cents:   6_285_000, rate: 0.020 },
+  { from_cents:   6_619_300, rate: 0.025 },
+  { from_cents:   7_220_800, rate: 0.030 },
+  { from_cents:   7_762_000, rate: 0.035 },
+  { from_cents:   8_394_600, rate: 0.040 },
+  { from_cents:   8_852_500, rate: 0.045 },
+  { from_cents:   9_486_900, rate: 0.050 },
+  { from_cents:   9_999_700, rate: 0.055 },
+  { from_cents:  10_899_700, rate: 0.060 },
+  { from_cents:  11_600_800, rate: 0.065 },
+  { from_cents:  12_461_200, rate: 0.070 },
+  { from_cents:  13_374_100, rate: 0.075 },
+  { from_cents:  14_330_700, rate: 0.080 },
+  { from_cents:  15_480_100, rate: 0.085 },
+  { from_cents:  16_577_000, rate: 0.090 },
+  { from_cents:  17_707_300, rate: 0.095 },
+  { from_cents:  18_997_500, rate: 0.100 },
+];
+
+// MLS thresholds 2024-25 (singles). Apply same for 2025-26 — verify against ATO before lodging.
+// MLS replaces the low-income Medicare reduction for simplicity; shade-in applied at each tier.
+const MLS_TIERS = [
+  { threshold_cents:  9_300_000, rate: 0.010 }, // $93,000
+  { threshold_cents: 10_800_000, rate: 0.0125 }, // $108,000
+  { threshold_cents: 14_400_000, rate: 0.015 },  // $144,000
+] as const;
+
+function computeMls(taxableIncomeCents: number, hasPhiCover: boolean): number {
+  if (hasPhiCover || taxableIncomeCents <= 0) return 0;
+  let rate = 0;
+  let threshold = 0;
+  for (const tier of MLS_TIERS) {
+    if (taxableIncomeCents > tier.threshold_cents) {
+      rate = tier.rate;
+      threshold = tier.threshold_cents;
+    }
+  }
+  if (rate === 0) return 0;
+  // Shade-in: MLS ≤ 10% × (income − base threshold) to avoid cliff at threshold boundary
+  const normal = Math.round(taxableIncomeCents * rate);
+  const shadeIn = Math.round((taxableIncomeCents - threshold) * 0.1);
+  return Math.min(normal, shadeIn);
+}
+
+// Division 293: extra 15% tax on concessional super when income + super > $250k.
+// Applies to the lower of (a) concessional super and (b) amount above the $250k threshold.
+const DIV293_THRESHOLD_CENTS = 25_000_000; // $250,000
+
+function computeDiv293(taxableIncomeCents: number, concessionalSuperCents: number): number {
+  if (concessionalSuperCents <= 0) return 0;
+  const div293Income = taxableIncomeCents + concessionalSuperCents;
+  if (div293Income <= DIV293_THRESHOLD_CENTS) return 0;
+  const excessCents = div293Income - DIV293_THRESHOLD_CENTS;
+  const chargeableCents = Math.min(concessionalSuperCents, excessCents);
+  return Math.round(chargeableCents * 0.15);
+}
+
+function computeHecsRepayment(repaymentIncomeCents: number): number {
+  if (repaymentIncomeCents <= 0) return 0;
+  let rate = 0;
+  for (let i = HECS_TIERS.length - 1; i >= 0; i--) {
+    if (repaymentIncomeCents >= (HECS_TIERS[i]?.from_cents ?? 0)) {
+      rate = HECS_TIERS[i]?.rate ?? 0;
+      break;
+    }
+  }
+  return Math.round(repaymentIncomeCents * rate);
+}
 
 export interface TaxEstimateLine {
   label: string;
@@ -40,11 +123,23 @@ export interface RentalPropertySummary {
   expense_cents: number;
   net_cents: number;
   ownership_adjusted_net_cents: number;
+  ng_status: NgStatus;
 }
 
 export interface RentalBlock {
   properties: RentalPropertySummary[];
+  // Amount that flows into taxable income (general net + quarantined positive after carry-forward).
   total_net_cents: number;
+  // Net from grandfathered / new-build properties (can be negative → reduces taxable income).
+  general_offset_net_cents: number;
+  // Raw net from restricted / transitional properties (can be negative → quarantined, not in taxable).
+  quarantined_net_cents: number;
+  // Prior accumulated carry-forward applied to reduce quarantined positive income this FY.
+  carry_forward_applied_cents: number;
+  // Accumulated carry-forward remaining after this FY (persisted for next FY).
+  new_carry_forward_cents: number;
+  // false for FY ≤ 2026-27 (all losses still offset general income).
+  reform_applies: boolean;
 }
 
 export interface TaxEstimateResult {
@@ -54,18 +149,28 @@ export interface TaxEstimateResult {
   allowances_cents: number;
   tax_withheld_cents: number;
   super_cents: number;
+  total_deductions_cents: number;
   taxable_income_cents: number;
   income_tax_cents: number;
   medicare_levy_cents: number;
   lito_cents: number;
   franking_credits_cents: number;
   fito_cents: number;
+  hecs_repayment_cents: number;
+  has_hecs: boolean;
+  mls_cents: number;
+  div293_cents: number;
+  cgt_min_tax_cents: number;
+  has_phi: boolean;
+  received_income_support: boolean;
   dividend_totals: DividendTotalsAud;
   cgt: {
     total_gain_cents: number;
     total_loss_cents: number;
     net_gain_cents: number;
     discounted_net_gain_cents: number;
+    new_regime_net_gain_cents: number;
+    min_tax_real_gain_cents: number;
     loss_carryforward_cents: number;
     event_count: number;
     orphan_count: number;
@@ -185,8 +290,9 @@ function aggregateDividendsAud(divs: readonly DividendWithSecurity[]): DividendT
   };
 }
 
-function computeRentalBlock(fyId: number): RentalBlock {
+function computeRentalBlock(fyId: number, fy: FinancialYear): RentalBlock {
   const properties = propertiesRepo.findAll();
+  const reformApplies = fy.start_date >= REFORM_COMMENCEMENT_DATE;
   const summaries: RentalPropertySummary[] = [];
 
   for (const prop of properties) {
@@ -200,6 +306,11 @@ function computeRentalBlock(fyId: number): RentalBlock {
     }
     const net_cents = totals.income_cents - totals.expense_cents - depreciation_total;
     const ownership_adjusted_net_cents = Math.round(net_cents * (prop.ownership_percent / 100));
+    const ng_status = classifyNgStatus({
+      is_new_build: prop.is_new_build,
+      acquired_date: prop.acquired_date,
+      contract_date: prop.contract_date,
+    });
     summaries.push({
       id: prop.id,
       address: prop.address,
@@ -207,11 +318,66 @@ function computeRentalBlock(fyId: number): RentalBlock {
       expense_cents: totals.expense_cents + depreciation_total,
       net_cents,
       ownership_adjusted_net_cents,
+      ng_status,
     });
   }
 
-  const total_net_cents = summaries.reduce((s, p) => s + p.ownership_adjusted_net_cents, 0);
-  return { properties: summaries, total_net_cents };
+  if (!reformApplies) {
+    const total_net_cents = summaries.reduce((s, p) => s + p.ownership_adjusted_net_cents, 0);
+    return {
+      properties: summaries,
+      total_net_cents,
+      general_offset_net_cents: total_net_cents,
+      quarantined_net_cents: 0,
+      carry_forward_applied_cents: 0,
+      new_carry_forward_cents: 0,
+      reform_applies: false,
+    };
+  }
+
+  // Reform applies from FY 2027-28 onwards.
+  // Split properties: unrestricted (can offset general income) vs quarantined.
+  let generalNet = 0;
+  let quarantinedNet = 0;
+  for (const p of summaries) {
+    if (ngOffsetAllowedForFy(p.ng_status, fy.start_date)) {
+      generalNet += p.ownership_adjusted_net_cents;
+    } else {
+      quarantinedNet += p.ownership_adjusted_net_cents;
+    }
+  }
+
+  // Apply prior carry-forward to quarantined positive income.
+  const priorCf = residentialLossCfRepo.getPriorFyAmount(fy.start_date);
+  let quarantinedTaxable: number;
+  let cfApplied: number;
+  let newCf: number;
+
+  if (quarantinedNet >= 0) {
+    // Positive quarantined income: use carry-forward to offset it first.
+    cfApplied = Math.min(priorCf, quarantinedNet);
+    quarantinedTaxable = quarantinedNet - cfApplied;
+    newCf = priorCf - cfApplied;
+  } else {
+    // Quarantined loss: does NOT reduce general taxable income; accumulate.
+    cfApplied = 0;
+    quarantinedTaxable = 0;
+    newCf = priorCf + (-quarantinedNet);
+  }
+
+  // Persist carry-forward for next FY's use (idempotent upsert).
+  residentialLossCfRepo.save(fyId, newCf);
+
+  const total_net_cents = generalNet + quarantinedTaxable;
+  return {
+    properties: summaries,
+    total_net_cents,
+    general_offset_net_cents: generalNet,
+    quarantined_net_cents: quarantinedNet,
+    carry_forward_applied_cents: cfApplied,
+    new_carry_forward_cents: newCf,
+    reform_applies: true,
+  };
 }
 
 export function buildTaxEstimate(fyId: number): TaxEstimateResult {
@@ -237,12 +403,22 @@ export function buildTaxEstimate(fyId: number): TaxEstimateResult {
       totalLossCents: 0,
       netGainCents: 0,
       discountedNetGainCents: 0,
+      new_regime_net_gain_cents: 0,
+      min_tax_real_gain_cents: 0,
       loss_carryforward_cents: 0,
       orphans: [],
     };
   }
 
-  const rental = computeRentalBlock(fyId);
+  const rental = computeRentalBlock(fyId, fy);
+  const totalDeductionsCents = deductionsRepo.totalByFy(fyId);
+  const taxSettings = deductionsRepo.getTaxSettings(fyId);
+  const {
+    has_hecs: hasHecs,
+    has_phi: hasPhi,
+    salary_sacrifice_super_cents: salarySacrificeSuper,
+    received_income_support: hasReceivedIncomeSupport,
+  } = taxSettings;
 
   // Taxable income:
   //   salary + allowances
@@ -250,39 +426,86 @@ export function buildTaxEstimate(fyId: number): TaxEstimateResult {
   //   + foreign dividends (already in AUD via FX)
   //   + discounted net capital gain
   //   + rental net (negative = negative gearing, reduces taxable income)
-  const taxableIncomeCents =
+  //   − work-related and other deductions
+  // CGT taxable income: legacy discounted gains + new-regime real (CPI-indexed) gains.
+  // For FY ≤ 2026-27, new_regime_net_gain_cents is always 0 (no sales after 1 Jul 2027).
+  const cgtTaxableGainCents = cgt.discountedNetGainCents + cgt.new_regime_net_gain_cents;
+
+  const taxableIncomeCents = Math.max(
+    0,
     totals.gross_cents +
     totals.allowances_cents +
     divTotals.unfranked_cents +
     divTotals.franked_cents +
     divTotals.franking_credits_cents +
-    cgt.discountedNetGainCents +
-    rental.total_net_cents;
+    cgtTaxableGainCents +
+    rental.total_net_cents -
+    totalDeductionsCents,
+  );
 
   const { taxCents: incomeTaxCents, breakdown } = computeIncomeTax(taxableIncomeCents, brackets);
 
   const medicareCents = Math.round(taxableIncomeCents * config.medicare_levy_rate);
+  const mlsCents = computeMls(taxableIncomeCents, hasPhi);
   const litoCents = computeLito(taxableIncomeCents, config);
   const fitoCents = divTotals.withholding_tax_cents;
+  const hecsRepaymentCents = hasHecs ? computeHecsRepayment(taxableIncomeCents) : 0;
+
+  // Concessional super = employer SGC from payslips + any salary sacrifice entered
+  const concessionalSuperCents = totals.super_cents + salarySacrificeSuper;
+  const div293Cents = computeDiv293(taxableIncomeCents, concessionalSuperCents);
+
+  // 2026-27 Budget Reform: 30% minimum tax on new-regime real capital gains (from 1 Jul 2027).
+  // Compares income-tax-only (Medicare levy excluded per the Jack cameo) on the gain against 30%.
+  // Exempt when: no new-regime gain, OR taxpayer received a means-tested income support payment.
+  // Note: tax offsets (e.g. LITO) may further reduce this in practice — simplified here.
+  const cgtMinTaxCents = (() => {
+    const realGain = cgt.min_tax_real_gain_cents;
+    if (realGain <= 0 || hasReceivedIncomeSupport) return 0;
+    const taxableWithoutGain = Math.max(0, taxableIncomeCents - realGain);
+    const { taxCents: taxWithoutGain } = computeIncomeTax(taxableWithoutGain, brackets);
+    const incrementalTax = incomeTaxCents - taxWithoutGain;
+    const minimumTax = Math.round(realGain * CGT_MIN_TAX_RATE);
+    return Math.max(0, minimumTax - incrementalTax);
+  })();
 
   const estimatedTaxPayableCents = Math.max(
     0,
-    incomeTaxCents + medicareCents - litoCents - divTotals.franking_credits_cents - fitoCents,
+    incomeTaxCents + medicareCents + mlsCents - litoCents - divTotals.franking_credits_cents - fitoCents,
   );
-  const refundOrBillCents = totals.tax_withheld_cents - estimatedTaxPayableCents;
+  const refundOrBillCents = totals.tax_withheld_cents - estimatedTaxPayableCents - hecsRepaymentCents - div293Cents - cgtMinTaxCents;
 
-  const rentalLine: TaxEstimateLine =
-    rental.total_net_cents < 0
-      ? {
-          label: 'Negative gearing offset',
-          amount_cents: rental.total_net_cents,
-          formula: `Net rental loss across ${rental.properties.length} property/ies (reduces taxable income)`,
-        }
-      : {
-          label: 'Net rental income (all properties)',
-          amount_cents: rental.total_net_cents,
-          formula: `Net rental income across ${rental.properties.length} property/ies (adds to taxable income)`,
-        };
+  const n = rental.properties.length;
+  const rentalMainLine: TaxEstimateLine = rental.total_net_cents < 0
+    ? {
+        label: 'Negative gearing offset',
+        amount_cents: rental.total_net_cents,
+        formula: `Net rental loss across ${n} propert${n === 1 ? 'y' : 'ies'} (reduces taxable income)`,
+      }
+    : {
+        label: 'Net rental income (all properties)',
+        amount_cents: rental.total_net_cents,
+        formula: `Net rental income across ${n} propert${n === 1 ? 'y' : 'ies'} (adds to taxable income)`,
+      };
+  // Reform-specific informational lines (amount_cents = 0; already reflected in total_net_cents above).
+  const rentalReformLines: TaxEstimateLine[] = rental.reform_applies ? [
+    ...(rental.quarantined_net_cents < 0 ? [{
+      label: 'Restricted rental loss quarantined (carry-forward)',
+      amount_cents: 0,
+      formula:
+        `Loss of ${fmtAud(-rental.quarantined_net_cents)} from restricted/transitional properties ` +
+        `is quarantined — does not offset salary/wages. ` +
+        `Accumulated carry-forward now ${fmtAud(rental.new_carry_forward_cents)} (applied against future residential-property income).`,
+    }] : []),
+    ...(rental.carry_forward_applied_cents > 0 ? [{
+      label: 'Prior rental loss carry-forward applied',
+      amount_cents: 0,
+      formula:
+        `${fmtAud(rental.carry_forward_applied_cents)} of prior accumulated losses applied against ` +
+        `restricted-property income this FY (already included in net rental line above). ` +
+        `Remaining carry-forward: ${fmtAud(rental.new_carry_forward_cents)}.`,
+    }] : []),
+  ] : [];
 
   const lines: TaxEstimateLine[] = [
     {
@@ -311,17 +534,32 @@ export function buildTaxEstimate(fyId: number): TaxEstimateResult {
       formula: 'Foreign dividend cash converted via Stake AUD/USD rate',
     },
     {
-      label: 'Net capital gain (after 50% discount)',
+      label: cgt.new_regime_net_gain_cents > 0
+        ? 'Net capital gain (legacy 50% discount)'
+        : 'Net capital gain (after 50% discount)',
       amount_cents: cgt.discountedNetGainCents,
       formula:
         `Gross gains ${fmtAud(cgt.totalGainCents)} - losses ${fmtAud(cgt.totalLossCents)}; ` +
-        `losses applied to ineligible (<12mo) gains first, then 50% discount on remaining eligible.`,
+        `losses applied to non-discounted gains first, then 50% discount on eligible.`,
     },
-    rentalLine,
+    ...(cgt.new_regime_net_gain_cents > 0 ? [{
+      label: 'Net capital gain (post-1 Jul 2027, CPI-indexed)',
+      amount_cents: cgt.new_regime_net_gain_cents,
+      formula:
+        `Real gains after CPI indexation on assets acquired/sold under the 2027 reform rules. ` +
+        `30% minimum tax applies (see Phase 3).`,
+    }] : []),
+    rentalMainLine,
+    ...rentalReformLines,
+    ...(totalDeductionsCents > 0 ? [{
+      label: 'Work-related & other deductions',
+      amount_cents: -totalDeductionsCents,
+      formula: 'D1–D10 deductions reduce taxable income',
+    }] : []),
     {
       label: 'Taxable income',
       amount_cents: taxableIncomeCents,
-      formula: 'salary + allowances + AU divs + franking credits + foreign divs (AUD) + discounted CGT + rental net',
+      formula: 'salary + allowances + AU divs + franking credits + foreign divs (AUD) + CGT (legacy discounted + new-regime indexed) + rental net − deductions',
     },
     {
       label: 'Income tax',
@@ -331,8 +569,13 @@ export function buildTaxEstimate(fyId: number): TaxEstimateResult {
     {
       label: `Medicare levy (${(config.medicare_levy_rate * 100).toFixed(1)}%)`,
       amount_cents: medicareCents,
-      formula: `${config.medicare_levy_rate} * taxable income (low-income reduction TODO Phase 5)`,
+      formula: `${config.medicare_levy_rate} × taxable income`,
     },
+    ...(mlsCents > 0 ? [{
+      label: 'Medicare Levy Surcharge',
+      amount_cents: mlsCents,
+      formula: `No private hospital cover + income > $93,000 — surcharge rate applied to taxable income`,
+    }] : []),
     {
       label: 'LITO offset',
       amount_cents: -litoCents,
@@ -355,6 +598,25 @@ export function buildTaxEstimate(fyId: number): TaxEstimateResult {
       amount_cents: estimatedTaxPayableCents,
       formula: 'max(0, income_tax + medicare - LITO - franking_credits - FITO)',
     },
+    ...(div293Cents > 0 ? [{
+      label: 'Division 293 tax (super)',
+      amount_cents: div293Cents,
+      formula: `15% × min(concessional super ${fmtAud(concessionalSuperCents)}, income+super above $250k) — billed separately by ATO`,
+    }] : []),
+    ...(cgtMinTaxCents > 0 ? [{
+      label: 'CGT minimum tax top-up (30%)',
+      amount_cents: cgtMinTaxCents,
+      formula:
+        `2027 reform: real gain ${fmtAud(cgt.min_tax_real_gain_cents)} × 30% = ` +
+        `${fmtAud(Math.round(cgt.min_tax_real_gain_cents * CGT_MIN_TAX_RATE))} minimum; ` +
+        `incremental income tax on gain was less than 30%, so top-up applies. ` +
+        `Billed separately (like HECS). Exempt if receiving Age Pension / JobSeeker.`,
+    }] : []),
+    ...(hecsRepaymentCents > 0 ? [{
+      label: 'HECS/HELP compulsory repayment',
+      amount_cents: hecsRepaymentCents,
+      formula: `Repayment income ${fmtAud(taxableIncomeCents)} × applicable rate (ATO 2024-25 schedule)`,
+    }] : []),
     {
       label: 'Tax withheld (PAYG)',
       amount_cents: totals.tax_withheld_cents,
@@ -363,7 +625,7 @@ export function buildTaxEstimate(fyId: number): TaxEstimateResult {
     {
       label: refundOrBillCents >= 0 ? 'Estimated refund' : 'Estimated balance owing',
       amount_cents: refundOrBillCents,
-      formula: `withheld (${fmtAud(totals.tax_withheld_cents)}) - tax payable (${fmtAud(estimatedTaxPayableCents)})`,
+      formula: `withheld (${fmtAud(totals.tax_withheld_cents)}) - tax payable (${fmtAud(estimatedTaxPayableCents)})${cgtMinTaxCents > 0 ? ` - CGT min tax (${fmtAud(cgtMinTaxCents)})` : ''}${hecsRepaymentCents > 0 ? ` - HECS (${fmtAud(hecsRepaymentCents)})` : ''}`,
     },
   ];
 
@@ -374,18 +636,28 @@ export function buildTaxEstimate(fyId: number): TaxEstimateResult {
     allowances_cents: totals.allowances_cents,
     tax_withheld_cents: totals.tax_withheld_cents,
     super_cents: totals.super_cents,
+    total_deductions_cents: totalDeductionsCents,
     taxable_income_cents: taxableIncomeCents,
     income_tax_cents: incomeTaxCents,
     medicare_levy_cents: medicareCents,
     lito_cents: litoCents,
     franking_credits_cents: divTotals.franking_credits_cents,
     fito_cents: fitoCents,
+    hecs_repayment_cents: hecsRepaymentCents,
+    has_hecs: hasHecs,
+    mls_cents: mlsCents,
+    div293_cents: div293Cents,
+    cgt_min_tax_cents: cgtMinTaxCents,
+    has_phi: hasPhi,
+    received_income_support: hasReceivedIncomeSupport,
     dividend_totals: divTotals,
     cgt: {
       total_gain_cents: cgt.totalGainCents,
       total_loss_cents: cgt.totalLossCents,
       net_gain_cents: cgt.netGainCents,
       discounted_net_gain_cents: cgt.discountedNetGainCents,
+      new_regime_net_gain_cents: cgt.new_regime_net_gain_cents,
+      min_tax_real_gain_cents: cgt.min_tax_real_gain_cents,
       loss_carryforward_cents: cgt.loss_carryforward_cents,
       event_count: cgt.events.length,
       orphan_count: cgt.orphans.length,

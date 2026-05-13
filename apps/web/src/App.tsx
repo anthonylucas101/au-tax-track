@@ -12,6 +12,7 @@ import { CgtPage } from './pages/investments/Cgt.js';
 import { PropertiesPage } from './pages/property/Properties.js';
 import { PropertyDetailPage } from './pages/property/PropertyDetail.js';
 import { ExportPage } from './pages/Export.js';
+import { DeductionsPage } from './pages/Deductions.js';
 
 function Body() {
   const { error, loading, selected } = useFy();
@@ -32,6 +33,7 @@ function Body() {
           <Route path="/investments/cgt" element={<CgtPage />} />
           <Route path="/property" element={<PropertiesPage />} />
           <Route path="/property/:id" element={<PropertyDetailPage />} />
+          <Route path="/deductions" element={<DeductionsPage />} />
           <Route path="/export" element={<ExportPage />} />
           <Route path="*" element={<DashboardPage />} />
         </Routes>

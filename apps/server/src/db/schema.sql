@@ -192,3 +192,43 @@ CREATE TABLE IF NOT EXISTS building_allowances (
   notes                   TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_building_allow_property ON building_allowances(property_id);
+
+-- Work-related and other deductions (D1–D10, income protection, etc.)
+CREATE TABLE IF NOT EXISTS deductions (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  fy_id         INTEGER NOT NULL REFERENCES financial_years(id) ON DELETE CASCADE,
+  category      TEXT    NOT NULL,
+  amount_cents  INTEGER NOT NULL DEFAULT 0,
+  notes         TEXT,
+  UNIQUE(fy_id, category)
+);
+CREATE INDEX IF NOT EXISTS idx_deductions_fy ON deductions(fy_id);
+
+-- Per-FY tax settings: HECS, private health insurance, salary sacrifice super
+CREATE TABLE IF NOT EXISTS hecs_settings (
+  fy_id                        INTEGER PRIMARY KEY REFERENCES financial_years(id) ON DELETE CASCADE,
+  enabled                      INTEGER NOT NULL DEFAULT 0,
+  has_phi                      INTEGER NOT NULL DEFAULT 0,
+  salary_sacrifice_super_cents INTEGER NOT NULL DEFAULT 0
+);
+
+-- 2026-27 Budget Reform: quarterly CPI for cost-base indexation (commencing 1 Jul 2027).
+-- Source: ABS Cat. 6401.0 Table 1 — All Groups, weighted average of eight capital cities (2011-12=100).
+-- Quarter key: 'YYYY-QN' (Q1=Jan-Mar, Q2=Apr-Jun, Q3=Jul-Sep, Q4=Oct-Dec).
+-- IMPORTANT: Verify seeded values against ABS before lodging. Add new quarters as ABS publishes them.
+CREATE TABLE IF NOT EXISTS cpi_index (
+  quarter      TEXT NOT NULL PRIMARY KEY,
+  index_value  REAL NOT NULL,
+  notes        TEXT
+);
+
+-- 2026-27 Budget Reform: rental losses quarantined under the new negative-gearing rules (FY 2027-28+).
+-- These losses can only offset residential-property income in future years.
+CREATE TABLE IF NOT EXISTS residential_property_loss_carryforward (
+  id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  fy_id        INTEGER NOT NULL REFERENCES financial_years(id) ON DELETE CASCADE,
+  amount_cents INTEGER NOT NULL DEFAULT 0,
+  notes        TEXT,
+  UNIQUE(fy_id)
+);
+CREATE INDEX IF NOT EXISTS idx_rp_loss_cf_fy ON residential_property_loss_carryforward(fy_id);

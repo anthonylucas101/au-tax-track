@@ -66,10 +66,14 @@ export interface CgtSummary {
   total_loss_cents: number;
   net_gain_cents: number;
   discounted_net_gain_cents: number;
+  new_regime_net_gain_cents: number;
+  min_tax_real_gain_cents: number;
   loss_carryforward_cents: number;
   event_count: number;
   orphan_count: number;
 }
+
+export type NgStatus = 'grandfathered' | 'transitional_window' | 'restricted' | 'new_build';
 
 export interface RentalPropertySummary {
   id: number;
@@ -78,11 +82,17 @@ export interface RentalPropertySummary {
   expense_cents: number;
   net_cents: number;
   ownership_adjusted_net_cents: number;
+  ng_status: NgStatus;
 }
 
 export interface RentalBlock {
   properties: RentalPropertySummary[];
   total_net_cents: number;
+  general_offset_net_cents: number;
+  quarantined_net_cents: number;
+  carry_forward_applied_cents: number;
+  new_carry_forward_cents: number;
+  reform_applies: boolean;
 }
 
 export interface TaxEstimate {
@@ -92,12 +102,20 @@ export interface TaxEstimate {
   allowances_cents: number;
   tax_withheld_cents: number;
   super_cents: number;
+  total_deductions_cents: number;
   taxable_income_cents: number;
   income_tax_cents: number;
   medicare_levy_cents: number;
   lito_cents: number;
   franking_credits_cents: number;
   fito_cents: number;
+  hecs_repayment_cents: number;
+  has_hecs: boolean;
+  mls_cents: number;
+  div293_cents: number;
+  has_phi: boolean;
+  cgt_min_tax_cents: number;
+  received_income_support: boolean;
   dividend_totals: DividendTotalsAud;
   cgt: CgtSummary;
   rental: RentalBlock;
@@ -106,6 +124,20 @@ export interface TaxEstimate {
   bracket_breakdown: BracketBreakdown[];
   lines: TaxEstimateLine[];
   config: TaxConfig;
+}
+
+export interface DeductionItem {
+  category: string;
+  amount_cents: number;
+  notes: string | null;
+}
+
+export interface DeductionsResponse {
+  items: DeductionItem[];
+  has_hecs: boolean;
+  has_phi: boolean;
+  salary_sacrifice_super_cents: number;
+  received_income_support: boolean;
 }
 
 export interface Security {
@@ -312,6 +344,10 @@ export interface Property {
   sale_proceeds_cents: number | null;
   selling_costs_cents: number;
   notes: string | null;
+  is_new_build: number;
+  contract_date: string | null;
+  cgt_method_choice: 'discount' | 'indexation' | null;
+  value_at_commencement_cents: number | null;
 }
 
 export interface RentalTransaction {
@@ -538,6 +574,10 @@ export const api = {
     sale_proceeds_cents?: number | null;
     selling_costs_cents?: number;
     notes?: string | null;
+    is_new_build?: number;
+    contract_date?: string | null;
+    cgt_method_choice?: 'discount' | 'indexation' | null;
+    value_at_commencement_cents?: number | null;
   }) => request<Property>(`/api/properties/${id}`, { method: 'PUT', body: JSON.stringify(input) }),
   deleteProperty: (id: number) =>
     request<{ ok: true }>(`/api/properties/${id}`, { method: 'DELETE' }),
@@ -593,4 +633,13 @@ export const api = {
 
   propertySummary: (propertyId: number, fyId: number) =>
     request<PropertySummary>(`/api/properties/${propertyId}/summary?fyId=${fyId}`),
+
+  getDeductions: (fyId: number) =>
+    request<DeductionsResponse>(`/api/deductions?fyId=${encodeURIComponent(fyId)}`),
+  upsertDeduction: (input: { fy_id: number; category: string; amount_cents: number; notes?: string | null }) =>
+    request<{ ok: true }>('/api/deductions', { method: 'PUT', body: JSON.stringify(input) }),
+  setHecs: (fy_id: number, enabled: boolean) =>
+    request<{ ok: true }>('/api/deductions/hecs', { method: 'PUT', body: JSON.stringify({ fy_id, enabled }) }),
+  updateTaxSettings: (fy_id: number, patch: { has_hecs?: boolean; has_phi?: boolean; salary_sacrifice_super_cents?: number; received_income_support?: boolean }) =>
+    request<{ ok: true }>('/api/deductions/tax-settings', { method: 'PUT', body: JSON.stringify({ fy_id, ...patch }) }),
 };

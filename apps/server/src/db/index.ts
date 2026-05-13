@@ -2,6 +2,7 @@
 import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { seedCpiData } from './cpiSeed.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -53,10 +54,19 @@ interface ColumnMigration {
 }
 
 const COLUMN_MIGRATIONS: ColumnMigration[] = [
-  { table: 'properties', column: 'ownership_percent',    definition: 'REAL    NOT NULL DEFAULT 100' },
-  { table: 'properties', column: 'sold_date',            definition: 'TEXT' },
-  { table: 'properties', column: 'sale_proceeds_cents',  definition: 'INTEGER' },
-  { table: 'properties', column: 'selling_costs_cents',  definition: 'INTEGER NOT NULL DEFAULT 0' },
+  { table: 'properties',    column: 'ownership_percent',            definition: 'REAL    NOT NULL DEFAULT 100' },
+  { table: 'properties',    column: 'sold_date',                    definition: 'TEXT' },
+  { table: 'properties',    column: 'sale_proceeds_cents',          definition: 'INTEGER' },
+  { table: 'properties',    column: 'selling_costs_cents',          definition: 'INTEGER NOT NULL DEFAULT 0' },
+  { table: 'hecs_settings', column: 'has_phi',                      definition: 'INTEGER NOT NULL DEFAULT 0' },
+  { table: 'hecs_settings', column: 'salary_sacrifice_super_cents', definition: 'INTEGER NOT NULL DEFAULT 0' },
+  // 2026-27 Budget Reform columns
+  { table: 'properties',    column: 'is_new_build',                 definition: 'INTEGER NOT NULL DEFAULT 0' },
+  { table: 'properties',    column: 'contract_date',                definition: 'TEXT' },
+  { table: 'properties',    column: 'cgt_method_choice',            definition: "TEXT CHECK(cgt_method_choice IN ('discount','indexation'))" },
+  { table: 'properties',    column: 'value_at_commencement_cents',  definition: 'INTEGER' },
+  { table: 'securities',    column: 'value_at_commencement_cents',  definition: 'INTEGER' },
+  { table: 'hecs_settings', column: 'received_income_support',      definition: 'INTEGER NOT NULL DEFAULT 0' },
 ];
 
 function runMigrations(database: Database.Database): void {
@@ -75,6 +85,7 @@ db.pragma('journal_mode = WAL');
 db.pragma('foreign_keys = ON');
 applySchema(db);
 runMigrations(db);
+seedCpiData(db);
 
 export function getDbPath(): string {
   return DB_PATH;
