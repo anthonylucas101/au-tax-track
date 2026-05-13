@@ -95,6 +95,89 @@ export interface RentalBlock {
   reform_applies: boolean;
 }
 
+export interface CryptoCgtSummary {
+  total_gain_cents: number;
+  total_loss_cents: number;
+  net_gain_cents: number;
+  discounted_net_gain_cents: number;
+  loss_carryforward_cents: number;
+  event_count: number;
+}
+
+export interface CryptoTrade {
+  id: number;
+  asset_id: number;
+  fy_id: number;
+  trade_date: string;
+  side: 'buy' | 'sell';
+  units: number;
+  aud_value_cents: number;
+  fee_cents: number;
+  notes: string | null;
+  external_id: string | null;
+  symbol: string;
+}
+
+export interface CryptoCgtEvent {
+  sell_trade_id: number;
+  symbol: string;
+  sell_date: string;
+  acquired_date: string;
+  units: number;
+  proceeds_cents: number;
+  cost_base_cents: number;
+  gain_cents: number;
+  held_days: number;
+  discount_eligible: boolean;
+}
+
+export interface CryptoCgtOrphan {
+  sell_trade_id: number;
+  symbol: string;
+  sell_date: string;
+  units_sold: number;
+  units_unmatched: number;
+}
+
+export interface CryptoCgtResult extends CryptoCgtSummary {
+  fy: FinancialYear;
+  events: CryptoCgtEvent[];
+  orphans: CryptoCgtOrphan[];
+}
+
+export interface CryptoPreviewTrade {
+  source_file: string;
+  source_row: number;
+  trade_date: string;
+  symbol: string;
+  side: 'buy' | 'sell';
+  units: number;
+  aud_value_cents: number;
+  fee_cents: number;
+  external_id: string;
+  duplicate: boolean;
+  note: string | null;
+}
+
+export interface CoinspotImportPreview {
+  filename: string;
+  total: number;
+  new_count: number;
+  duplicate_count: number;
+  trades: CryptoPreviewTrade[];
+  errors: Array<{ file: string; row: number; message: string }>;
+}
+
+export interface CoinspotCommitResult {
+  inserted: number;
+  skipped_duplicates: number;
+  new_assets: number;
+}
+
+// Keep old names as aliases so any leftover references compile
+export type SwyftxImportPreview = CoinspotImportPreview;
+export type SwyftxCommitResult = CoinspotCommitResult;
+
 export interface TaxEstimate {
   fy: FinancialYear;
   payslip_count: number;
@@ -118,6 +201,7 @@ export interface TaxEstimate {
   received_income_support: boolean;
   dividend_totals: DividendTotalsAud;
   cgt: CgtSummary;
+  crypto_cgt: CryptoCgtSummary;
   rental: RentalBlock;
   estimated_tax_payable_cents: number;
   refund_or_bill_cents: number;
@@ -633,6 +717,23 @@ export const api = {
 
   propertySummary: (propertyId: number, fyId: number) =>
     request<PropertySummary>(`/api/properties/${propertyId}/summary?fyId=${fyId}`),
+
+  cryptoCgt: (fyId: number) => request<CryptoCgtResult>(`/api/crypto-cgt?fyId=${fyId}`),
+
+  cryptoTrades: (fyId: number) => request<CryptoTrade[]>(`/api/crypto-trades?fyId=${fyId}`),
+  createCryptoTrade: (input: {
+    symbol: string;
+    trade_date: string;
+    side: 'buy' | 'sell';
+    units: number;
+    aud_value: number;
+    notes?: string;
+  }) => request<{ id: number }>('/api/crypto-trades', { method: 'POST', body: JSON.stringify(input) }),
+  deleteCryptoTrade: (id: number) => request<{ ok: true }>(`/api/crypto-trades/${id}`, { method: 'DELETE' }),
+
+  importCryptoPreview: (files: File[]) => uploadFiles<CoinspotImportPreview[]>('/api/import/coinspot/preview', files),
+  importCryptoCommit: (files: File[]) =>
+    uploadFiles<{ result: CoinspotCommitResult; previews: CoinspotImportPreview[] }>('/api/import/coinspot/commit', files),
 
   getDeductions: (fyId: number) =>
     request<DeductionsResponse>(`/api/deductions?fyId=${encodeURIComponent(fyId)}`),

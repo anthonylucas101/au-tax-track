@@ -7,6 +7,7 @@ import { rentalTransactionsRepo } from '../db/repos/rentalTransactions.js';
 import { deductionsRepo } from '../db/repos/deductions.js';
 import { convertToAud } from '../lib/money.js';
 import { computeCgtForFy, type CgtResult } from './cgt.js';
+import { computeCryptoCgtForFy, type CryptoCgtResult } from './cryptoCgt.js';
 import { computeDepreciationForFy } from './depreciation.js';
 import {
   CGT_MIN_TAX_RATE,
@@ -176,6 +177,14 @@ export interface TaxEstimateResult {
     orphan_count: number;
   };
   rental: RentalBlock;
+  crypto_cgt: {
+    total_gain_cents: number;
+    total_loss_cents: number;
+    net_gain_cents: number;
+    discounted_net_gain_cents: number;
+    loss_carryforward_cents: number;
+    event_count: number;
+  };
   estimated_tax_payable_cents: number;
   refund_or_bill_cents: number;
   bracket_breakdown: BracketBreakdown[];
@@ -410,6 +419,24 @@ export function buildTaxEstimate(fyId: number): TaxEstimateResult {
     };
   }
 
+  let cryptoCgt: CryptoCgtResult;
+  try {
+    cryptoCgt = computeCryptoCgtForFy(fyId);
+  } catch (err) {
+    console.warn('[tax-estimate] Crypto CGT compute failed:', err);
+    cryptoCgt = {
+      fy,
+      events: [],
+      orphans: [],
+      total_gain_cents: 0,
+      total_loss_cents: 0,
+      net_gain_cents: 0,
+      discounted_net_gain_cents: 0,
+      loss_carryforward_cents: 0,
+      event_count: 0,
+    };
+  }
+
   const rental = computeRentalBlock(fyId, fy);
   const totalDeductionsCents = deductionsRepo.totalByFy(fyId);
   const taxSettings = deductionsRepo.getTaxSettings(fyId);
@@ -429,7 +456,9 @@ export function buildTaxEstimate(fyId: number): TaxEstimateResult {
   //   − work-related and other deductions
   // CGT taxable income: legacy discounted gains + new-regime real (CPI-indexed) gains.
   // For FY ≤ 2026-27, new_regime_net_gain_cents is always 0 (no sales after 1 Jul 2027).
-  const cgtTaxableGainCents = cgt.discountedNetGainCents + cgt.new_regime_net_gain_cents;
+  const cgtTaxableGainCents =
+    cgt.discountedNetGainCents + cgt.new_regime_net_gain_cents +
+    cryptoCgt.discounted_net_gain_cents;
 
   const taxableIncomeCents = Math.max(
     0,
@@ -549,6 +578,14 @@ export function buildTaxEstimate(fyId: number): TaxEstimateResult {
         `Real gains after CPI indexation on assets acquired/sold under the 2027 reform rules. ` +
         `30% minimum tax applies (see Phase 3).`,
     }] : []),
+    ...(cryptoCgt.discounted_net_gain_cents !== 0 || cryptoCgt.event_count > 0 ? [{
+      label: 'Net crypto capital gain (after 50% discount)',
+      amount_cents: cryptoCgt.discounted_net_gain_cents,
+      formula:
+        `${cryptoCgt.event_count} crypto disposal event(s): ` +
+        `gains ${fmtAud(cryptoCgt.total_gain_cents)} − losses ${fmtAud(cryptoCgt.total_loss_cents)}; ` +
+        `50% discount applied to gains held ≥ 12 months.`,
+    }] : []),
     rentalMainLine,
     ...rentalReformLines,
     ...(totalDeductionsCents > 0 ? [{
@@ -663,6 +700,14 @@ export function buildTaxEstimate(fyId: number): TaxEstimateResult {
       orphan_count: cgt.orphans.length,
     },
     rental,
+    crypto_cgt: {
+      total_gain_cents: cryptoCgt.total_gain_cents,
+      total_loss_cents: cryptoCgt.total_loss_cents,
+      net_gain_cents: cryptoCgt.net_gain_cents,
+      discounted_net_gain_cents: cryptoCgt.discounted_net_gain_cents,
+      loss_carryforward_cents: cryptoCgt.loss_carryforward_cents,
+      event_count: cryptoCgt.event_count,
+    },
     estimated_tax_payable_cents: estimatedTaxPayableCents,
     refund_or_bill_cents: refundOrBillCents,
     bracket_breakdown: breakdown,

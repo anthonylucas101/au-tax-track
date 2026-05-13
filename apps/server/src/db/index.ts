@@ -67,6 +67,13 @@ const COLUMN_MIGRATIONS: ColumnMigration[] = [
   { table: 'properties',    column: 'value_at_commencement_cents',  definition: 'INTEGER' },
   { table: 'securities',    column: 'value_at_commencement_cents',  definition: 'INTEGER' },
   { table: 'hecs_settings', column: 'received_income_support',      definition: 'INTEGER NOT NULL DEFAULT 0' },
+  { table: 'crypto_trades', column: 'external_id',                  definition: 'TEXT' },
+];
+
+// Idempotent index migrations run after all column migrations.
+const INDEX_MIGRATIONS: string[] = [
+  `CREATE UNIQUE INDEX IF NOT EXISTS idx_crypto_trades_external
+     ON crypto_trades(external_id) WHERE external_id IS NOT NULL`,
 ];
 
 function runMigrations(database: Database.Database): void {
@@ -76,6 +83,9 @@ function runMigrations(database: Database.Database): void {
       database.exec(`ALTER TABLE ${m.table} ADD COLUMN ${m.column} ${m.definition}`);
       console.log(`[migration] Added ${m.table}.${m.column}`);
     }
+  }
+  for (const sql of INDEX_MIGRATIONS) {
+    database.exec(sql);
   }
 }
 

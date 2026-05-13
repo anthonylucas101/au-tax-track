@@ -8,9 +8,13 @@ build/
 # Local DB and data
 data/
 
-# User import files (broker statements, etc.)
+# User import files (broker statements, personal financial data)
 *.xlsx
 *.xls
+*.csv
+*.pdf
+cgt_out.json
+*.tsbuildinfo
 
 # Env files
 .env
